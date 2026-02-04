@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Zero Hero — The Name of Numbers</title>
+
+  <!-- Tailwind CDN (fine for a simple static site) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+
+  <meta name="description" content="A simple static app to help answer my son’s constant queries about what numbers with X zeros are called." />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <!-- Add to homescreen on mobile -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <style>
+    :root { --bg-grad: linear-gradient(135deg,#fdfbfb 0%,#ebedee 100%); }
+    html,body { height:100%; }
+    body {
+      font-family: 'Nunito', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      margin:0;
+      background:var(--bg-grad);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      overscroll-behavior: none;
+      -webkit-user-select:none;
+      user-select:none;
+      color: #0f172a;
+    }
+
+    /* Keep your polished styles from the original. Simplified here. */
+    .tile { transition: transform .12s cubic-bezier(.4,0,.2,1), box-shadow .12s ease; touch-action: manipulation; }
+    .tile:active { transform: scale(.94); }
+
+    .number-scroll { mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); }
+
+    /* loading dots */
+    .dot-flashing { position:relative; width:6px; height:6px; border-radius:5px; background-color:currentColor; color:currentColor; animation: dot-flashing 1s infinite linear alternate; }
+    .dot-flashing::before, .dot-flashing::after { content:""; display:inline-block; position:absolute; top:0; }
+    .dot-flashing::before { left:-10px; }
+    .dot-flashing::after { left:10px; }
+    @keyframes dot-flashing { 0%{ background-color:currentColor } 50%,100% { background-color: rgba(100,100,100,.2) } }
+
+    /* simple accessible focus state */
+    .tile:focus { outline: 3px solid rgba(99,102,241,.18); outline-offset: 2px; }
+
+    /* modal transitions (kept minimal) */
+    #modal-overlay { transition: opacity .25s ease; }
+    #modal-content { transition: transform .3s cubic-bezier(.2,.9,.3,1), opacity .2s ease; }
+
+    /* small helpers */
+    .zero-count-text { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <header class="flex-none p-4 bg-white/80 backdrop-blur-sm shadow-sm z-10 text-center relative">
+    <h1 class="text-2xl md:text-3xl font-black text-indigo-600 tracking-tight">Zero Hero</h1>
+    <p class="text-xs md:text-sm text-slate-500 font-bold mt-1">Tap a number to see its name!</p>
+    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500" aria-hidden="true"></div>
+  </header>
+
+  <main class="flex-1 overflow-y-auto p-3 md:p-6 flex justify-center">
+    <div class="w-full max-w-2xl">
+      <div id="grid-container" class="grid grid-cols-5 md:grid-cols-10 gap-2 md:gap-3 pb-20" aria-label="Number grid"></div>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal-overlay" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm opacity-0 pointer-events-none" aria-hidden="true">
+    <div id="modal-content" class="bg-white w-full max-w-sm md:max-w-md rounded-3xl shadow-2xl overflow-hidden transform scale-90 opacity-0 flex flex-col max-h-[90vh]" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div id="modal-header-bg" class="p-6 text-center bg-indigo-500 text-white relative overflow-hidden shrink-0">
+        <div class="relative z-10">
+          <span class="inline-block px-3 py-1 bg-black/20 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
+            <span id="modal-zeros">0</span> Zeros
+          </span>
+          <h2 id="modal-title" class="text-3xl md:text-4xl font-black leading-tight break-words">Million</h2>
+        </div>
+        <button id="close-btn" class="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/30 text-white rounded-full" aria-label="Close dialog">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="p-6 flex-1 overflow-y-auto flex flex-col items-center">
+        <div class="mb-4 text-center">
+          <span class="text-slate-400 text-xs font-bold uppercase tracking-wide">Scientific Notation</span>
+          <div class="text-3xl font-black text-slate-700 mt-1">10<sup id="modal-power" class="text-lg text-indigo-500">6</sup></div>
+        </div>
+
+        <div class="w-full text-center mb-6">
+          <span class="text-slate-400 text-xs font-bold uppercase tracking-wide">Looks like</span>
+          <div class="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 overflow-x-auto number-scroll whitespace-nowrap">
+            <span id="modal-visual" class="text-lg md:text-xl font-mono text-slate-600 font-bold tracking-widest">1,000,000</span>
+          </div>
+          <p id="modal-visual-note" class="text-xs text-slate-400 mt-1 hidden">(Scroll to see the whole number!)</p>
+        </div>
+
+        <div class="w-full grid grid-cols-2 gap-3 mb-4">
+          <button id="btn-pronounce" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-slate-100 hover:border-indigo-100 hover:bg-indigo-50 transition group" aria-label="Pronounce name">
+            <span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🔊</span>
+            <span class="text-xs font-bold text-slate-600 group-hover:text-indigo-600">Say Name</span>
+            <div id="loader-pronounce" class="hidden mt-2"><div class="dot-flashing text-indigo-500"></div></div>
+          </button>
+          <button id="btn-fact" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-slate-100 hover:border-purple-100 hover:bg-purple-50 transition group" aria-label="Fun fact">
+            <span class="text-2xl mb-1 group-hover:scale-110 transition-transform">✨</span>
+            <span class="text-xs font-bold text-slate-600 group-hover:text-purple-600">Fun Fact</span>
+            <div id="loader-fact" class="hidden mt-2"><div class="dot-flashing text-purple-500"></div></div>
+          </button>
+        </div>
+
+        <div id="modal-context-box" class="w-full hidden bg-gradient-to-br from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100">
+          <p id="modal-context-text" class="text-sm text-indigo-900 font-medium leading-relaxed text-center"></p>
+        </div>
+      </div>
+
+      <div class="p-4 bg-slate-50 border-t border-slate-100 shrink-0 text-center">
+        <button onclick="closeModal()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg">Got it!</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // NOTE: Do NOT commit secrets to this file. For TTS/AI, use a server-side proxy or a private endpoint.
+    const apiKey = ""; // leave empty for public repo. See README for options.
+
+    // --- Data & logic ---
+    const illions = [
+      "", "Million", "Billion", "Trillion", "Quadrillion", "Quintillion",
+      "Sextillion", "Septillion", "Octillion", "Nonillion", "Decillion",
+      "Undecillion", "Duodecillion", "Trevigintillion", "Quattuordecillion",
+      "Quindecillion", "Sexdecillion", "Septendecillion", "Octodecillion",
+      "Novemdecillion", "Vigintillion", "Unvigintillion", "Duovigintillion",
+      "Trevigintillion", "Quattuorvigintillion", "Quinvigintillion",
+      "Sexvigintillion", "Septenvigintillion", "Octovigintillion",
+      "Novemvigintillion", "Trigintillion", "Untrigintillion", "Duotrigintillion"
+    ];
+
+    function getNumberName(zeros) {
+      if (zeros === 100) return "Googol";
+      if (zeros === 0) return "One";
+      if (zeros === 1) return "Ten";
+      if (zeros === 2) return "Hundred";
+      if (zeros === 3) return "Thousand";
+      if (zeros === 4) return "Ten Thousand";
+      if (zeros === 5) return "Hundred Thousand";
+
+      const arrayIndex = Math.floor((zeros - 3) / 3);
+      const baseName = illions[arrayIndex] || "Unknown";
+      const remainder = zeros % 3;
+      if (remainder === 0) return baseName;
+      if (remainder === 1) return "Ten " + baseName;
+      if (remainder === 2) return "Hundred " + baseName;
+      return baseName;
+    }
+
+    function getNumberVisual(zeros) {
+      if (zeros > 100) return "10^" + zeros;
+      let s = "1";
+      for (let i=0; i<zeros; i++) s += "0";
+      return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    // Minimal safe TTS/AI integrations: If you want client-side calls (not recommended for public keys),
+    // leave apiKey populated locally. Better: implement a serverless function that keeps the key private.
+
+    async function fetchGeminiFact(zeros, name) {
+      const btn = document.getElementById('btn-fact');
+      const loader = document.getElementById('loader-fact');
+      const box = document.getElementById('modal-context-box');
+      const textBox = document.getElementById('modal-context-text');
+
+      if (!apiKey) {
+        textBox.textContent = "To fetch a fun fact, add an API key via a safe server endpoint (see README).";
+        box.classList.remove('hidden');
+        return;
+      }
+
+      btn.disabled = true; loader.classList.remove('hidden'); box.classList.add('hidden');
+      try {
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            contents:[{parts:[{text:`Tell me a short kid-friendly fact about the number \
