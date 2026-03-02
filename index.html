@@ -298,30 +298,24 @@
             const btn = document.getElementById('btn-pronounce');
             const loader = document.getElementById('loader-pronounce');
             
-            if (!apiKey) {
-                alert("Please add your API Key in the code!");
-                return;
-            }
-
-            if (currentAudio) {
-                currentAudio.pause();
-                currentAudio = null;
-            }
-
-            // FIX: Initialize audio immediately for iOS support
+            // Initialize audio immediately for iOS support
             const audioObj = new Audio();
-            currentAudio = audioObj;
-
+            if (window.currentAudio) {
+                window.currentAudio.pause();
+            }
+            window.currentAudio = audioObj;
+        
             btn.disabled = true;
             loader.classList.remove('hidden');
-
+        
             try {
                 const response = await fetch('/api/audio', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ 
-                            parts: [{ text: "Say this number name slowly and clearly: " + name }] 
+                            role: "user", // Explicitly define the role
+                            parts: [{ text: "Say this number name slowly and clearly: " + name }] // Simplified to avoid safety filters
                         }],
                         generationConfig: {
                             responseModalities: ["AUDIO"],
@@ -333,25 +327,29 @@
                 });
                 
                 const result = await response.json();
+                
+                // 1. Safety Check: Did Google refuse to generate the audio?
+                if (!result.candidates || !result.candidates[0].content) {
+                    console.error("API blocked the request or returned empty:", result);
+                    throw new Error("Audio generation blocked or empty.");
+                }
+        
                 const base64Audio = result.candidates[0].content.parts[0].inlineData.data;
                 
-                // FIX: Decode base64 to binary and use as MP3 (no WAV header needed)
+                // 2. Decode Base64 to Raw Binary
                 const binaryString = window.atob(base64Audio);
-                const len = binaryString.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
                 
-                const blob = new Blob([bytes], { type: 'audio/mp3' });
+                // 3. Attach WAV Header to the raw PCM data
+                const blob = createWavFile(bytes);
                 const url = URL.createObjectURL(blob);
                 
                 audioObj.src = url;
-                
-                // Try playing. Note: iOS still sometimes blocks async play, 
-                // but this structure is the most compatible.
                 await audioObj.play();
-
+        
             } catch (error) {
                 console.error("TTS Error", error);
                 alert("Could not pronounce that right now!");
@@ -359,6 +357,45 @@
                 btn.disabled = false;
                 loader.classList.add('hidden');
             }
+        }
+
+        // --- Helper Function: Turns raw Gemini PCM into a playable WAV file ---
+        function createWavFile(pcmData) {
+            const sampleRate = 24000; // Gemini TTS outputs at 24kHz
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const dataSize = pcmData.length;
+            
+            // Create a buffer large enough for the 44-byte header + audio data
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+        
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+        
+            // Build the standard WAV header
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // 1 = PCM format
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); // byteRate
+            view.setUint16(32, 2, true); // blockAlign
+            view.setUint16(34, bitsPerSample, true);
+            writeString(36, 'data');
+            view.setUint32(40, dataSize, true);
+        
+            // Copy the raw PCM data in right after the header
+            const pcmView = new Uint8Array(buffer, 44);
+            pcmView.set(pcmData);
+        
+            return new Blob([buffer], { type: 'audio/wav' });
         }
 
         // --- UI Construction ---
