@@ -315,7 +315,7 @@
                     body: JSON.stringify({
                         contents: [{ 
                             role: "user", // Explicitly define the role
-                            parts: [{ text: "Say this number name slowly and clearly: " + name }] // Simplified to avoid safety filters
+                            parts: [{ text: name }]
                         }],
                         generationConfig: {
                             responseModalities: ["AUDIO"],
