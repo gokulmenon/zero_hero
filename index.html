@@ -245,11 +245,6 @@
             const box = document.getElementById('modal-context-box');
             const textBox = document.getElementById('modal-context-text');
 
-            if (!apiKey) {
-                alert("Please add your API Key in the code!");
-                return;
-            }
-
             btn.disabled = true;
             loader.classList.remove('hidden');
             box.classList.add('hidden');
@@ -257,29 +252,36 @@
             try {
                 let attempt = 0;
                 let result = null;
+                
+                // Construct the GET URL with variables and cache-buster
+                const fetch_url = `/api/fact?zeros=${zeros}&name=${encodeURIComponent(name)}&v=1`;
+
                 while (attempt < 3 && !result) {
                     try {
-                        const response = await fetch('/api/fact', { // Notice the new, clean URL
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{
-                                    parts: [{
-                                        text: `Tell me a fun, easy-to-understand fact or analogy about the number "${name}" (10^${zeros}). If it's a huge number, compare it to atoms in the universe or something similar. Keep it very short (max 2 sentences) and suitable for a student.`
-                                    }]
-                                }]
-                            })
-                        });
-                        if (response.ok) result = await response.json();
-                        else throw new Error('API Error');
+                        // Simple GET request!
+                        const response = await fetch(fetch_url);
+                        
+                        if (response.ok) {
+                            result = await response.json();
+                        } else {
+                            if (response.status === 429) {
+                                attempt = 99; // Force loop to stop if rate limited
+                                throw new Error("Rate limit exceeded.");
+                            }
+                            throw new Error('API Error');
+                        }
                     } catch (e) {
                         attempt++;
-                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
+                        else throw e;
                     }
                 }
 
-                if (!result) throw new Error("Failed to fetch");
+                if (!result || !result.candidates || !result.candidates[0].content) {
+                    throw new Error("Failed to fetch fact");
+                }
 
+                // Extract text from Google's response structure
                 const text = result.candidates[0].content.parts[0].text;
                 textBox.textContent = text;
                 box.classList.remove('hidden');
@@ -309,22 +311,18 @@
             loader.classList.remove('hidden');
         
             try {
-                const response = await fetch('/api/audio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ 
-                            role: "user", // Explicitly define the role
-                            parts: [{ text: name }]
-                        }],
-                        generationConfig: {
-                            responseModalities: ["AUDIO"],
-                            speechConfig: { 
-                                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } 
-                            }
-                        }
-                    })
-                });
+                // We construct the GET URL with the number name and a cache-buster
+                const fetch_url = `/api/audio?name=${encodeURIComponent(name)}&v=1`;
+                
+                // Simple GET request!
+                const response = await fetch(fetch_url);
+                
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        throw new Error("Rate limit exceeded. Please wait 60 seconds.");
+                    }
+                    throw new Error(`API Request Failed: ${response.status}`);
+                }
                 
                 const result = await response.json();
                 
@@ -352,7 +350,8 @@
         
             } catch (error) {
                 console.error("TTS Error", error);
-                alert("Could not pronounce that right now!");
+                // Now shows the actual error message to the user
+                alert(error.message || "Could not pronounce that right now!");
             } finally {
                 btn.disabled = false;
                 loader.classList.add('hidden');
