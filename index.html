@@ -254,7 +254,7 @@
                 let result = null;
                 
                 // Construct the GET URL with variables and cache-buster
-                const fetch_url = `/api/fact?zeros=${zeros}&name=${encodeURIComponent(name)}&v=1`;
+                const fetch_url = `https://zero-hero-swart.vercel.app/api/fact?zeros=${zeros}&name=${encodeURIComponent(name)}&v=1`;
 
                 while (attempt < 3 && !result) {
                     try {
@@ -312,7 +312,7 @@
         
             try {
                 // We construct the GET URL with the number name and a cache-buster
-                const fetch_url = `/api/audio?name=${encodeURIComponent(name)}&v=1`;
+                const fetch_url = `https://zero-hero-swart.vercel.app/api/audio?name=${encodeURIComponent(name)}&v=1`;
                 
                 // Simple GET request!
                 const response = await fetch(fetch_url);
